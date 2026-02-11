@@ -2375,6 +2375,15 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
             text-decoration: none;
         }
         .network-info-tip a:hover { text-decoration: underline; }
+        .net-toggle-bar { display:flex; gap:16px; margin-bottom:15px; flex-wrap:wrap; }
+        .net-toggle { display:flex; align-items:center; gap:6px; cursor:pointer; font-size:0.8rem; color:var(--text-dim); user-select:none; }
+        .net-toggle input { display:none; }
+        .net-toggle .slider { position:relative; width:36px; height:20px; background:var(--border); border-radius:10px; transition:0.3s; flex-shrink:0; }
+        .net-toggle .slider::after { content:''; position:absolute; width:16px; height:16px; background:#fff; border-radius:50%; top:2px; left:2px; transition:0.3s; }
+        .net-toggle input:checked + .slider { background:var(--glass-blue); }
+        .net-toggle input:checked + .slider::after { left:18px; }
+        .ip-hidden .ip-text { filter:blur(8px); user-select:none; pointer-events:none; }
+        .section-hidden { display:none !important; }
 
         /* 延迟测试卡片 */
         .latency-cards-grid {
@@ -2622,8 +2631,13 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
             <div id="section-network" class="content-section">
                 <div class="card">
                     <div class="card-title"><span class="icon">🌐</span> IP 信息检测</div>
+                    <div class="net-toggle-bar">
+                        <label class="net-toggle"><input type="checkbox" id="tgHideIp" onchange="applyNetToggles()"><span class="slider"></span>隐藏IP</label>
+                        <label class="net-toggle"><input type="checkbox" id="tgHideDom" onchange="applyNetToggles()"><span class="slider"></span>隐藏国内</label>
+                        <label class="net-toggle"><input type="checkbox" id="tgHideIntl" onchange="applyNetToggles()"><span class="slider"></span>隐藏国际</label>
+                    </div>
                     <div class="network-cards-grid">
-                        <div class="network-card">
+                        <div class="network-card" data-region="domestic">
                             <div class="network-card-title">
                                 <span class="status-indicator status-loading" id="status-ipip"></span>
                                 <span id="ipip-title">国内测试</span>
@@ -2634,7 +2648,7 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
                                 <div class="network-tip">· 您访问国内站点所使用的IP</div>
                             </div>
                         </div>
-                        <div class="network-card">
+                        <div class="network-card" data-region="international">
                             <div class="network-card-title">
                                 <span class="status-indicator status-loading" id="status-edgeone"></span>
                                 国外测试
@@ -2645,7 +2659,7 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
                                 <div class="network-tip">· 您访问国外站点所使用的IP</div>
                             </div>
                         </div>
-                        <div class="network-card">
+                        <div class="network-card" data-region="international">
                             <div class="network-card-title">
                                 <span class="status-indicator status-loading" id="status-cf"></span>
                                 CloudFlare
@@ -2656,7 +2670,7 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
                                 <div class="network-tip">· 您访问CFCDN站点的落地IP</div>
                             </div>
                         </div>
-                        <div class="network-card">
+                        <div class="network-card" data-region="international">
                             <div class="network-card-title">
                                 <span class="status-indicator status-loading" id="status-twitter"></span>
                                 X.com
@@ -3099,6 +3113,7 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
                 const regionText = site.region === 'domestic' ? '国内' : '国际';
                 const card = document.createElement('div');
                 card.className = 'latency-card';
+                card.dataset.region = site.region;
                 card.innerHTML = '<div class="latency-card-header"><div class="latency-card-info"><div class="latency-card-icon" data-site="' + site.name + '">' + site.icon + '</div><div><div class="latency-card-name">' + site.name + '</div><div class="latency-card-region ' + regionClass + '">' + regionText + '</div></div></div><div class="latency-status" id="latency-' + siteName + '">...<span class="unit">ms</span></div></div>';
                 container.appendChild(card);
             });
@@ -3150,9 +3165,13 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
             try {
                 const res = await fetch(atob('aHR0cHM6Ly9hcGkuaXBhcGkuY21saXVzc3NzLm5ldA=='));
                 const d = await res.json();
-                document.getElementById('edgeone-ip').textContent = d.ip || '未知';
-                document.getElementById('edgeone-country').textContent = ((d.location?.country_code || '') + ' AS' + (d.asn?.asn || '') + ' ' + (d.asn?.org || '')).trim();
-                setNetworkStatus('status-edgeone', 'success');
+                const ip = d.ip || '';
+                const loc = ((d.location?.country_code || '') + ' AS' + (d.asn?.asn || '') + ' ' + (d.asn?.org || '')).trim();
+                if (ip) {
+                    document.getElementById('edgeone-ip').textContent = ip;
+                    document.getElementById('edgeone-country').textContent = loc || '';
+                    setNetworkStatus('status-edgeone', 'success');
+                } else throw new Error();
             } catch {
                 document.getElementById('edgeone-ip').innerHTML = '<span class="error">加载失败</span>';
                 setNetworkStatus('status-edgeone', 'error');
@@ -3187,6 +3206,21 @@ function dashPage(host, uuid, proxyip, subpass, subdomain, converter, env, clien
                 document.getElementById('twitter-ip').innerHTML = '<span class="error">加载失败</span>';
                 setNetworkStatus('status-twitter', 'error');
             }
+        }
+
+        function applyNetToggles() {
+            const hideIp = document.getElementById('tgHideIp').checked;
+            const hideDom = document.getElementById('tgHideDom').checked;
+            const hideIntl = document.getElementById('tgHideIntl').checked;
+            document.querySelectorAll('.network-card').forEach(c => {
+                const r = c.dataset.region;
+                if (hideIp) c.classList.add('ip-hidden'); else c.classList.remove('ip-hidden');
+                if ((r === 'domestic' && hideDom) || (r === 'international' && hideIntl)) c.classList.add('section-hidden'); else c.classList.remove('section-hidden');
+            });
+            document.querySelectorAll('.latency-card').forEach(c => {
+                const r = c.dataset.region;
+                if ((r === 'domestic' && hideDom) || (r === 'international' && hideIntl)) c.classList.add('section-hidden'); else c.classList.remove('section-hidden');
+            });
         }
 
         function loadNetworkInfo() {
